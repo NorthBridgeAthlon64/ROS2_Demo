@@ -71,34 +71,40 @@ class RobotSimulator(Node):
     
     def update(self):
         """
-        定时更新：模拟机器人运动，发布里程计和激光雷达数据
-        这是物理模拟的核心
+        定时更新函数：模拟机器人运动，发布里程计和激光雷达数据
+        
+        这是物理模拟的核心，每0.1秒执行一次：
+        1. 根据速度指令更新机器人位置（运动学模型）
+        2. 检测碰撞并处理
+        3. 发布里程计消息（位置、朝向、速度）
+        4. 发布模拟的激光雷达扫描数据
         """
-        # ====== 1. 更新位置（简单的差速模型） ======
-        # 差速模型：两个轮子速度不同就转弯
-        # 线速度 = (左轮速度 + 右轮速度) / 2
-        # 角速度 = (右轮速度 - 左轮速度) / 轮距
-        # 这里简化：直接用线速度和角速度
-        # ====== TODO 2: 用运动学模型更新机器人位置 ======
+        # ====== 1. 更新位置（差速驱动运动学模型） ======
+        # 差速模型假设：
+        # - 机器人有两个驱动轮，左右轮速度可以独立控制
+        # - 线速度 vx = (v_left + v_right) / 2
+        # - 角速度 vw = (v_right - v_left) / wheel_base
+        # - 位置更新：x += vx * cos(θ) * dt, y += vx * sin(θ) * dt
+        # - 朝向更新：θ += vw * dt
         self.x += self.vx * math.cos(self.theta) * self.dt
         self.y += self.vx * math.sin(self.theta) * self.dt
         self.theta += self.vw * self.dt
         
-        # 让角度保持在 [-π, π] 之间
+        # 角度归一化到 [-π, π] 范围，避免数值溢出
         self.theta = math.atan2(math.sin(self.theta), math.cos(self.theta))
         
         # ====== 2. 碰撞检测 ======
-        # 检查机器人是否撞墙了
+        # 检查机器人当前位置是否在障碍物（墙壁）内
         row, col = world_to_grid(self.x, self.y)
         if get_cell(row, col) == 1:  # 撞到障碍物
-            # 回退到上一个位置（简单处理）
+            # 简单的碰撞响应：回退到上一个位置
             self.x -= self.vx * math.cos(self.theta) * self.dt
             self.y -= self.vx * math.sin(self.theta) * self.dt
-            self.vx = 0.0
+            self.vx = 0.0  # 停止运动
             self.vw = 0.0
             self.get_logger().warn('撞墙了！位置: (%.2f, %.2f)' % (self.x, self.y))
         
-        # ====== 3. 发布里程计 ======
+        # ====== 3. 发布里程计消息 ======
         self.publish_odometry()
         
         # ====== 4. 发布模拟的激光雷达数据 ======
@@ -106,24 +112,33 @@ class RobotSimulator(Node):
     
     def publish_odometry(self):
         """
-        发布里程计消息
-        包含机器人的位置、朝向、速度
+        发布里程计消息（Odometry）
+        
+        里程计消息包含：
+        - header: 时间戳和坐标系信息
+        - pose.pose: 机器人位置（x,y）和朝向（四元数）
+        - twist.twist: 机器人当前速度（线速度和角速度）
+        
+        坐标系说明：
+        - frame_id: 'odom' - 固定世界坐标系
+        - child_frame_id: 'base_link' - 机器人本体坐标系
         """
         msg = Odometry()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'odom'          # 里程计坐标系
         msg.child_frame_id = 'base_link'      # 机器人坐标系
         
-        # 位置
+        # 位置信息
         msg.pose.pose.position.x = self.x
         msg.pose.pose.position.y = self.y
         
-        # 朝向（用四元数表示旋转）
-        # 绕 Z 轴旋转 theta 弧度
+        # 朝向信息（使用四元数表示旋转）
+        # 绕Z轴旋转theta弧度，四元数公式：
+        # qz = sin(θ/2), qw = cos(θ/2)
         msg.pose.pose.orientation.z = math.sin(self.theta / 2)
         msg.pose.pose.orientation.w = math.cos(self.theta / 2)
         
-        # 速度
+        # 速度信息
         msg.twist.twist.linear.x = self.vx
         msg.twist.twist.angular.z = self.vw
         
@@ -131,14 +146,21 @@ class RobotSimulator(Node):
     
     def publish_laser_scan(self):
         """
-        发布模拟的激光雷达扫描数据
-        模拟 360° 扫描，每个方向测一个距离
+        发布模拟的激光雷达扫描数据（LaserScan）
+        
+        激光雷达参数：
+        - 360°全方位扫描，每1°一个测距点
+        - 最小检测距离0.1米，最大检测距离5.0米
+        - 使用光线投射算法模拟真实激光雷达
+        
+        算法原理：
+        对每个角度，从机器人位置发射射线，逐步检测是否碰到障碍物
         """
         msg = LaserScan()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'laser'
         
-        # 激光雷达参数
+        # 激光雷达配置参数
         msg.angle_min = 0.0                     # 起始角度（弧度）
         msg.angle_max = 2 * math.pi             # 结束角度（360度）
         msg.angle_increment = math.pi / 180     # 角度间隔（1度）
@@ -148,10 +170,10 @@ class RobotSimulator(Node):
         # 计算每个方向的距离
         ranges = []
         num_beams = 360  # 360条射线
-        # ====== TODO 3: 计算每个方向的激光雷达测距 ======
+        
         for i in range(num_beams):
             angle = msg.angle_min + i * msg.angle_increment
-            # 转换成世界坐标系下的角度
+            # 转换成世界坐标系下的角度（机器人朝向 + 激光雷达相对角度）
             world_angle = self.theta + angle
             distance = self.ray_cast(world_angle)
             ranges.append(distance)
@@ -161,14 +183,23 @@ class RobotSimulator(Node):
     
     def ray_cast(self, angle):
         """
-        光线投射：模拟一条激光射线
-        从机器人位置出发，沿 angle 方向，计算最近障碍物的距离
+        光线投射算法：模拟单条激光射线的测距过程
         
-        参数 angle：射线方向（弧度，世界坐标系）
-        返回：最近障碍物的距离（米），如果没找到返回最大距离
+        算法步骤：
+        1. 从机器人当前位置出发
+        2. 沿指定角度方向逐步前进（步长0.1米）
+        3. 每前进一步，检查该点是否在障碍物内
+        4. 如果碰到障碍物，返回当前距离
+        5. 如果达到最大距离仍未碰到，返回最大距离
+        
+        参数：
+            angle: 射线方向（弧度，世界坐标系）
+            
+        返回：
+            最近障碍物的距离（米），如果没找到返回5.0米
         """
         max_range = 5.0
-        step = 0.1  # 每步检测间隔（米）
+        step = 0.1  # 每步检测间隔（米），精度和性能的平衡
         distance = 0.0
         
         while distance < max_range:
@@ -179,13 +210,13 @@ class RobotSimulator(Node):
             # 转换成地图格子坐标
             row, col = world_to_grid(ray_x, ray_y)
             
-            # 检查这个格子是不是障碍物
+            # 检查这个格子是否是障碍物（墙壁）
             if get_cell(row, col) == 1:
                 return distance  # 找到障碍物，返回距离
             
             distance += step
         
-        return max_range  # 没找到障碍物
+        return max_range  # 没找到障碍物，返回最大距离
 
 
 def main(args=None):
