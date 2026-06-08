@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Python virtual environment
+venv/
+.venv/
+
 # ROS2 build artifacts
 build/
 install/
