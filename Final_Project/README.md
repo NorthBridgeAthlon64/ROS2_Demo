@@ -109,7 +109,17 @@ source install/setup.bash
 ros2 launch warehouse_digital_twin warehouse_twin.launch.py
 ```
 
-#### 方法2：分别启动各节点
+#### 方法2：使用 Web 可视化启动（浏览器查看，SSH 友好）
+```bash
+# 先安装 Flask
+pip install flask
+
+# 启动（含 Web 可视化）
+ros2 launch warehouse_digital_twin warehouse_twin_web.launch.py
+```
+然后在浏览器打开 `http://<服务器IP>:5000` 即可看到实时地图画面。
+
+#### 方法3：分别启动各节点
 ```bash
 # 终端1：启动机器人模拟器
 ros2 run warehouse_digital_twin simulator
@@ -117,8 +127,11 @@ ros2 run warehouse_digital_twin simulator
 # 终端2：启动控制器
 ros2 run warehouse_digital_twin controller
 
-# 终端3：启动可视化界面
+# 终端3：启动终端可视化
 ros2 run warehouse_digital_twin visualizer
+
+# 或启动 Web 可视化（需先 pip install flask）
+ros2 run warehouse_digital_twin web_visualizer
 ```
 
 ## 📖 使用说明

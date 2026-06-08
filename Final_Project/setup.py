@@ -26,6 +26,7 @@ setup(
             'simulator = warehouse_digital_twin.robot_simulator:main',
             'controller = warehouse_digital_twin.warehouse_controller:main',
             'visualizer = warehouse_digital_twin.visualizer:main',
+            'web_visualizer = warehouse_digital_twin.web_visualizer:main',
         ],
     },
 )
