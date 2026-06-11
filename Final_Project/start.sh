@@ -34,12 +34,13 @@ fi
 # ---- 创建或激活 Python 虚拟环境 ----
 echo -e "${YELLOW}[2/6] 准备 Python 虚拟环境...${NC}"
 # --system-site-packages 让 venv 能访问系统 ROS2 包（rclpy 等）
-if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${YELLOW}  首次运行，正在创建虚拟环境...${NC}"
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+    echo -e "${YELLOW}  正在创建虚拟环境...${NC}"
+    rm -rf "$VENV_DIR" 2>/dev/null  # 清理可能损坏的旧目录
     python3 -m venv --system-site-packages "$VENV_DIR"
     echo -e "${GREEN}  虚拟环境已创建${NC}"
 else
-    echo -e "${GREEN}  虚拟环境已存在${NC}"
+    echo -e "${GREEN}  虚拟环境已就绪${NC}"
 fi
 source "$VENV_DIR/bin/activate"
 echo -e "${GREEN}  虚拟环境已激活${NC}"
